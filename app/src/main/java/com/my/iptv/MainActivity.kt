@@ -565,7 +565,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
                 .clip(shape).combinedClickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
             val c = if (f) cs.onPrimary else if (airing) cs.onSecondaryContainer else cs.onSurface
-            Text(text, maxLines = 1, color = c, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text(text, maxLines = 2, color = c, fontSize = 14.sp, fontWeight = FontWeight.Medium)
             if (sub.isNotEmpty()) Text(sub, maxLines = 1, color = c.copy(alpha = 0.7f), fontSize = 11.sp)
         }
     }
@@ -591,7 +591,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     val ge = gs + 12 * 3600_000L
     val sc = rememberScrollState()
     val dpm = 5f
-    val nameW = 170.dp
+    val nameW = 230.dp
     Column(Modifier.fillMaxSize()) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(cl) { c -> Tile(c.name, sel = c.id == cat?.id, pill = true) { nav.gcat = c } }
@@ -608,16 +608,16 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
         LazyColumn(state = gls, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(chans) { ch ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Tile((if (Repo.isFav(ch)) "♥ " else "") + Repo.label(ch), onLong = { onLong(ch) }, mod = Modifier.width(nameW).padding(end = 6.dp), fr = if (ch.id == lid) fr else null) { onPlay(ch, chans) }
+                    Tile((if (Repo.isFav(ch)) "♥ " else "") + Repo.label(ch), onLong = { onLong(ch) }, lines = 2, mod = Modifier.width(nameW).height(72.dp).padding(end = 6.dp), fr = if (ch.id == lid) fr else null) { onPlay(ch, chans) }
                     Row(Modifier.weight(1f).horizontalScroll(sc)) {
                         var cur = gs
                         val ps = Repo.guideProgs(ch).filter { it.e > gs && it.s < ge }
-                        if (ps.isEmpty()) Cell("No guide data", "", false, Modifier.width(300.dp).height(60.dp)) { onPlay(ch, chans) }
+                        if (ps.isEmpty()) Cell("No guide data", "", false, Modifier.width(300.dp).height(72.dp)) { onPlay(ch, chans) }
                         else ps.forEach { p ->
                             val st = maxOf(p.s, gs, cur); val en = minOf(p.e, ge)
                             if (en > st) {
                                 if (st > cur) Spacer(Modifier.width(((st - cur) / 60000f * dpm).dp))
-                                Cell(p.t, "${hm(p.s)}-${hm(p.e)}", p.s <= now && now < p.e, Modifier.width(((en - st) / 60000f * dpm).dp).height(60.dp)) { onPlay(ch, chans) }
+                                Cell(p.t, "${hm(p.s)}-${hm(p.e)}", p.s <= now && now < p.e, Modifier.width(((en - st) / 60000f * dpm).dp).height(72.dp)) { onPlay(ch, chans) }
                                 cur = en
                             }
                         }
