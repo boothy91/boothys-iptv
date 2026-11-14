@@ -338,8 +338,10 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     val hc = Repo.list("hc_$tab")
     val hi = Repo.list("hi_$tab")
     val poster = tab != "live"
+    LaunchedEffect(Unit) { Repo.checkUpdate() }
     val loading = Repo.items.isEmpty() && !Repo.status.startsWith("Load failed") && !Repo.status.startsWith("Problem")
     Column(Modifier.fillMaxSize().padding(24.dp)) {
+        Repo.update?.let { UpdateBanner(it) }
         Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             types.forEach { (k, l) -> Tile(l, sel = tab == k && !searching && !guide && !settings && !favs, pill = true) { tab = k; cat = null; ser = null; foc = null; searching = false; guide = false; settings = false; favs = false } }
             Tile("♥ Favourites", sel = favs, pill = true) { favs = true; searching = false; guide = false; settings = false; ser = null; foc = null }
@@ -482,6 +484,21 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(l) { e -> Tile(e.name, mod = Modifier.fillMaxWidth()) { onOpen(e) } } }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable fun UpdateBanner(u: Upd) {
+    var f by remember { mutableStateOf(false) }
+    val cs = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        Modifier.fillMaxWidth().padding(bottom = 12.dp).onFocusChanged { f = it.hasFocus }
+            .background(if (f) cs.primary else Color(0xFF1B8A5A), shape).clip(shape)
+            .combinedClickable(onClick = { Repo.downloadUpdate() }).padding(horizontal = 20.dp, vertical = 12.dp)
+    ) {
+        Text("⬆  Update available — ${u.tag}", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        Text(if (Repo.updProgress >= 0) "Downloading… ${Repo.updProgress}%" else Repo.updMsg.ifEmpty { "Tap to download and install" }, color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+    }
+}
+
 @Composable fun Favourites(onFocus: (Item) -> Unit, onLong: (Item) -> Unit, onOpen: (Item, List<Item>) -> Unit) {
     val cs = MaterialTheme.colorScheme
     val t = Repo.tick
@@ -524,6 +541,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
         }
         Tile("Faster live start: " + if (Repo.fastLive) "On" else "Off", "Uses direct streams instead of HLS where the server allows it. Turn off if a channel won't play", mod = Modifier.fillMaxWidth()) { Repo.toggleFast() }
         Tile("Sleep timer: " + (if (Repo.sleepHours == 0) "Off" else "${Repo.sleepHours}h"), "Stops playback after this long with no remote or touch input, so the screensaver can start", mod = Modifier.fillMaxWidth()) { Repo.cycleSleep() }
+        Tile("Check for updates", Repo.updCheck.ifEmpty { "Installed version: ${Repo.ver()}" }, mod = Modifier.fillMaxWidth()) { Repo.checkUpdate(true) }
         Tile("Unhide everything", "$hidden hidden categories / channels", mod = Modifier.fillMaxWidth()) { Repo.clearHidden() }
         Tile("Switch playlist", "Logs out of ${Repo.account?.name ?: ""}", mod = Modifier.fillMaxWidth()) { confirm = true }
     }

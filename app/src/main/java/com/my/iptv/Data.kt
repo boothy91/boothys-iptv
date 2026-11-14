@@ -1,6 +1,10 @@
 package com.my.iptv
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import androidx.core.content.FileProvider
 import android.content.SharedPreferences
 import android.util.Xml
 import androidx.compose.runtime.getValue
@@ -22,10 +26,12 @@ data class Account(val name: String, val xtream: Boolean, val server: String, va
 data class Cat(val id: String, val name: String, val type: String)
 data class Item(val id: String, val name: String, val cat: String, val type: String, val url: String, val epgId: String = "", val icon: String = "")
 data class Prog(val s: Long, val e: Long, val t: String)
+data class Upd(val tag: String, val url: String)
 data class CW(val url: String, val name: String, val icon: String, val type: String, val pos: Long, val dur: Long)
 
 object Repo {
     lateinit var dir: File
+    lateinit var appCtx: Context
     lateinit var sp: SharedPreferences
     var account: Account? = null
     var tick by mutableIntStateOf(0)
@@ -42,6 +48,75 @@ object Repo {
         sp.edit().putString("fav", JSONArray(favKeys).toString()).apply()
     }
     fun favItems(type: String): List<Item> = favKeys.mapNotNull { byKey[it] }.filter { it.type == type }
+
+    // ---------- in-app updates (GitHub releases) ----------
+    private const val REPO = "boothy91/boothys-iptv"
+    var update by mutableStateOf<Upd?>(null)
+    var updProgress by mutableIntStateOf(-1)
+    var updMsg by mutableStateOf("")
+    var updCheck by mutableStateOf("")
+    private var checked = false
+
+    fun ver(): String = runCatching { appCtx.packageManager.getPackageInfo(appCtx.packageName, 0).versionName }.getOrNull() ?: "0"
+
+    private fun newer(a: String, b: String): Boolean {
+        val x = Regex("\\d+").findAll(a).map { it.value.toInt() }.toList()
+        val y = Regex("\\d+").findAll(b).map { it.value.toInt() }.toList()
+        for (i in 0 until maxOf(x.size, y.size)) { val p = x.getOrElse(i) { 0 }; val q = y.getOrElse(i) { 0 }; if (p != q) return p > q }
+        return false
+    }
+
+    fun checkUpdate(manual: Boolean = false) {
+        if (!manual && checked) return
+        checked = true
+        if (manual) updCheck = "Checking…"
+        Thread {
+            runCatching {
+                val c = URL("https://api.github.com/repos/$REPO/releases/latest").openConnection() as HttpURLConnection
+                c.setRequestProperty("Accept", "application/vnd.github+json"); c.setRequestProperty("User-Agent", "BoothysIPTV")
+                c.connectTimeout = 8000; c.readTimeout = 8000
+                val o = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
+                val tag = o.getString("tag_name"); val assets = o.getJSONArray("assets")
+                var url = ""
+                for (k in 0 until assets.length()) { val a = assets.getJSONObject(k); if (a.getString("name").endsWith(".apk")) { url = a.getString("browser_download_url"); break } }
+                if (url.isNotEmpty() && newer(tag, ver())) { update = Upd(tag, url); updCheck = "Update available: $tag" }
+                else updCheck = "You're up to date (v${ver()})"
+            }.onFailure { if (manual) updCheck = "Couldn't check: ${it.message}" }
+        }.start()
+    }
+
+    fun downloadUpdate() {
+        val u = update ?: return
+        if (updProgress >= 0) return
+        if (Build.VERSION.SDK_INT >= 26 && !appCtx.packageManager.canRequestPackageInstalls()) {
+            updMsg = "Allow 'Install unknown apps' for this app, then tap this banner again"
+            runCatching {
+                appCtx.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${appCtx.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            return
+        }
+        updProgress = 0; updMsg = ""
+        Thread {
+            runCatching {
+                val dir = File(appCtx.externalCacheDir ?: appCtx.cacheDir, "update").apply { mkdirs() }
+                val f = File(dir, "BoothysIPTV.apk")
+                val c = URL(u.url).openConnection() as HttpURLConnection
+                c.connectTimeout = 15000; c.readTimeout = 30000; c.instanceFollowRedirects = true
+                val total = c.contentLengthLong
+                c.inputStream.use { i ->
+                    f.outputStream().use { o ->
+                        val b = ByteArray(65536); var n = 0L
+                        while (true) { val r = i.read(b); if (r < 0) break; o.write(b, 0, r); n += r; if (total > 0) updProgress = (n * 100 / total).toInt() }
+                    }
+                }
+                updProgress = 100
+                val uri = if (Build.VERSION.SDK_INT >= 24) FileProvider.getUriForFile(appCtx, "${appCtx.packageName}.fileprovider", f) else Uri.fromFile(f)
+                appCtx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure { updMsg = "Update failed: ${it.message}" }
+            updProgress = -1
+        }.start()
+    }
 
     var fastLive by mutableStateOf(true)
     fun toggleFast() { fastLive = !fastLive; sp.edit().putBoolean("fast", fastLive).apply() }
@@ -115,6 +190,8 @@ object Repo {
     private fun norm(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
 
     fun init(c: Context) {
+        appCtx = c.applicationContext
+        runCatching { File(c.cacheDir, "update").deleteRecursively(); File(c.externalCacheDir, "update").deleteRecursively() }
         dir = c.filesDir; sp = c.getSharedPreferences("p", 0); organise = sp.getBoolean("org", true); sleepHours = sp.getInt("sleep", 4); fastLive = sp.getBoolean("fast", true); favKeys = list("fav")
         sp.getString("acc", null)?.let {
             val o = JSONObject(it)
