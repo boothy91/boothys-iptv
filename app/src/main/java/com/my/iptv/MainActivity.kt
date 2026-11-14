@@ -121,6 +121,7 @@ class Nav {
     var guide by mutableStateOf(false)
     var settings by mutableStateOf(false)
     var gcat by mutableStateOf<Cat?>(null)
+    var favs by mutableStateOf(false)
     var lastId: String? = null
 }
 
@@ -221,7 +222,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
         if (progress > 0f) Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(cs.background)) {
             Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(if (f) cs.onPrimary else cs.primary))
         }
-        Text((if (pinned) "★ " else "") + i.name, maxLines = 1, color = if (f) cs.onPrimary else cs.onSurface, fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 2.dp))
+        Text((if (Repo.isFav(i)) "♥ " else "") + (if (pinned) "★ " else "") + i.name, maxLines = 1, color = if (f) cs.onPrimary else cs.onSurface, fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 2.dp))
     }
 }
 
@@ -273,7 +274,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     }
 }
 
-@Composable fun Search(onOpen: (Item) -> Unit) {
+@Composable fun Search(onLong: (Item) -> Unit, onOpen: (Item) -> Unit) {
     val cs = MaterialTheme.colorScheme
     var q by remember { mutableStateOf("") }
     var res by remember { mutableStateOf<List<Item>>(emptyList()) }
@@ -289,7 +290,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
         if (q.trim().length >= 2 && res.isEmpty()) Text("No results", color = cs.onSurfaceVariant)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(res) { i ->
-                Tile(Repo.label(i), when (i.type) { "live" -> "Live TV"; "movie" -> "Movie"; else -> "Series" }, mod = Modifier.fillMaxWidth()) { onOpen(i) }
+                Tile(Repo.label(i), when (i.type) { "live" -> "Live TV"; "movie" -> "Movie"; else -> "Series" }, onLong = { onLong(i) }, mod = Modifier.fillMaxWidth()) { onOpen(i) }
             }
         }
     }
@@ -305,6 +306,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     var searching by nav::searching
     var guide by nav::guide
     var settings by nav::settings
+    var favs by nav::favs
     var foc by remember { mutableStateOf<Item?>(null) }
     var dlg by remember { mutableStateOf<Dlg?>(null) }
     BackHandler(ser != null) { ser = null }
@@ -312,6 +314,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     BackHandler(searching) { searching = false }
     BackHandler(guide) { guide = false }
     BackHandler(settings) { settings = false }
+    BackHandler(favs) { favs = false }
     fun open(i: Item, list: List<Item> = emptyList()) {
         nav.lastId = i.id
         if (i.type == "series" && i.url.isEmpty()) { Repo.addRecent(i); ser = i }
@@ -323,8 +326,11 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
                 if (ep) (ser?.name?.let { "$it · " } ?: "") + i.name else i.name, if (ep) ser?.icon ?: "" else i.icon, if (ep) "series" else i.type, if (i.type == "live") i else null))
         }
     }
-    fun menu(title: String, pinKey: String, hideKey: String, id: String, pins: List<String>) {
-        dlg = Dlg(title, listOf(
+    fun favOpt(i: Item): Pair<String, () -> Unit> = (if (Repo.isFav(i)) "Remove from favourites" else "Add to favourites") to { Repo.toggleFav(i) }
+    fun favMenu(i: Item) { dlg = Dlg(i.name, listOf(favOpt(i))) }
+    fun menu(title: String, pinKey: String, hideKey: String, id: String, pins: List<String>, item: Item? = null) {
+        dlg = Dlg(title, listOfNotNull(
+            item?.let { favOpt(it) },
             (if (id in pins) "Remove from top" else "Add to top") to { Repo.toggle(pinKey, id) },
             "Hide" to { Repo.toggle(hideKey, id) }
         ))
@@ -335,11 +341,12 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     val loading = Repo.items.isEmpty() && !Repo.status.startsWith("Load failed") && !Repo.status.startsWith("Problem")
     Column(Modifier.fillMaxSize().padding(24.dp)) {
         Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            types.forEach { (k, l) -> Tile(l, sel = tab == k && !searching && !guide && !settings, pill = true) { tab = k; cat = null; ser = null; foc = null; searching = false; guide = false; settings = false } }
+            types.forEach { (k, l) -> Tile(l, sel = tab == k && !searching && !guide && !settings && !favs, pill = true) { tab = k; cat = null; ser = null; foc = null; searching = false; guide = false; settings = false; favs = false } }
+            Tile("♥ Favourites", sel = favs, pill = true) { favs = true; searching = false; guide = false; settings = false; ser = null; foc = null }
             Tile("Update", pill = true) { Repo.refresh() }
-            Tile("Search", sel = searching, pill = true) { searching = true; guide = false; settings = false }
-            Tile("TV Guide", sel = guide, pill = true) { guide = true; searching = false; settings = false }
-            Tile("Settings", sel = settings, pill = true) { settings = true; searching = false; guide = false }
+            Tile("Search", sel = searching, pill = true) { searching = true; guide = false; settings = false; favs = false }
+            Tile("TV Guide", sel = guide, pill = true) { guide = true; searching = false; settings = false; favs = false }
+            Tile("Settings", sel = settings, pill = true) { settings = true; searching = false; guide = false; favs = false }
         }
         if (Repo.status.isNotEmpty()) Text(Repo.status, color = cs.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
         Spacer(Modifier.height(12.dp))
@@ -348,10 +355,17 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
         if (settings) {
             Box(Modifier.weight(1f)) { Settings(dark, onTheme, onLogout) }
         } else if (guide) {
-            Box(Modifier.weight(1f)) { Guide(nav) { ch, l -> open(ch, l) } }
+            Box(Modifier.weight(1f)) { Guide(nav, { favMenu(it) }) { ch, l -> open(ch, l) } }
+        } else if (favs) {
+            Box(Modifier.weight(1f)) {
+                Favourites({ foc = it }, { favMenu(it) }) { i, l ->
+                    if (i.type == "series" && i.url.isEmpty()) { favs = false; tab = "series"; cat = null }
+                    open(i, l)
+                }
+            }
         } else if (searching) {
             Box(Modifier.weight(1f)) {
-                Search { i ->
+                Search({ favMenu(it) }) { i ->
                     if (i.type == "series" && i.url.isEmpty()) { searching = false; tab = "series"; cat = null }
                     open(i)
                 }
@@ -379,15 +393,15 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
             LaunchedEffect(c.id) { if (idx0 >= 0) { delay(150); runCatching { fr.requestFocus() }; nav.lastId = null } }
             if (poster) {
                 LazyVerticalGrid(GridCells.Fixed(5), Modifier.weight(1f), state = gs, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(l) { i -> Poster(i, i.id in pins, { foc = it }, { menu(i.name, "pi_$tab", "hi_$tab", i.id, pins) }, fr = if (i.id == lid) fr else null) { open(i) } }
+                    items(l) { i -> Poster(i, i.id in pins, { foc = it }, { menu(i.name, "pi_$tab", "hi_$tab", i.id, pins, i) }, fr = if (i.id == lid) fr else null) { open(i) } }
                 }
             } else {
                 LazyColumn(Modifier.weight(1f), state = ls, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(l) { i ->
                         val p = Repo.nowProg(i)
-                        Tile((if (i.id in pins) "★ " else "") + Repo.label(i),
+                        Tile((if (Repo.isFav(i)) "♥ " else "") + (if (i.id in pins) "★ " else "") + Repo.label(i),
                             if (p != null) "${hm(p.s)}-${hm(p.e)}  ${p.t}" + (Repo.nextProg(i)?.let { "   ›  ${hm(it.s)} ${it.t}" } ?: "") else "",
-                            onLong = { menu(i.name, "pi_$tab", "hi_$tab", i.id, pins) },
+                            onLong = { menu(i.name, "pi_$tab", "hi_$tab", i.id, pins, i) },
                             mod = Modifier.fillMaxWidth(), fr = if (i.id == lid) fr else null) { open(i, l) }
                     }
                 }
@@ -417,7 +431,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
                     item {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(rec) { i ->
-                                if (poster) Poster(i, false, { foc = it }, { menu(i.name, "pi_$tab", "hi_$tab", i.id, emptyList()) }, Modifier.width(130.dp)) { open(i) }
+                                if (poster) Poster(i, false, { foc = it }, { menu(i.name, "pi_$tab", "hi_$tab", i.id, emptyList(), i) }, Modifier.width(130.dp)) { open(i) }
                                 else Tile(Repo.label(i), Repo.nowProg(i)?.t ?: "", lines = 2, mod = Modifier.width(280.dp)) { open(i) }
                             }
                         }
@@ -431,7 +445,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
                 }
             }
         }
-        if (poster && sr == null && foc != null && !searching) Info(foc)
+        if ((poster || favs) && sr == null && foc != null && !searching && !guide && !settings) Info(foc)
     }
     dlg?.let { d ->
         // Ignore the select button until the long-press that opened this menu has been released
@@ -466,6 +480,33 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     if (l == null) Text("Loading…", color = g)
     else if (l.isEmpty()) Text("No episodes found", color = g)
     else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(l) { e -> Tile(e.name, mod = Modifier.fillMaxWidth()) { onOpen(e) } } }
+}
+
+@Composable fun Favourites(onFocus: (Item) -> Unit, onLong: (Item) -> Unit, onOpen: (Item, List<Item>) -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val t = Repo.tick
+    val live = Repo.favItems("live")
+    val movies = Repo.favItems("movie")
+    val series = Repo.favItems("series")
+    if (live.isEmpty() && movies.isEmpty() && series.isEmpty()) {
+        Text("No favourites yet. Long-press any channel, movie or series and choose Add to favourites.", color = cs.onSurfaceVariant)
+    } else LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (live.isNotEmpty()) {
+            item { Text("Live TV", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
+            items(live) { i ->
+                val p = Repo.nowProg(i)
+                Tile("♥ " + Repo.label(i), if (p != null) "${hm(p.s)}-${hm(p.e)}  ${p.t}" else "", onLong = { onLong(i) }, mod = Modifier.fillMaxWidth()) { onOpen(i, live) }
+            }
+        }
+        if (movies.isNotEmpty()) {
+            item { Text("Movies", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
+            item { LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) { items(movies) { i -> Poster(i, false, onFocus, { onLong(i) }, Modifier.width(130.dp)) { onOpen(i, emptyList()) } } } }
+        }
+        if (series.isNotEmpty()) {
+            item { Text("Series", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
+            item { LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) { items(series) { i -> Poster(i, false, onFocus, { onLong(i) }, Modifier.width(130.dp)) { onOpen(i, emptyList()) } } } }
+        }
+    }
 }
 
 @Composable fun Settings(dark: Boolean, onTheme: () -> Unit, onLogout: () -> Unit) {
@@ -512,7 +553,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     }
 }
 
-@Composable fun Guide(nav: Nav, onPlay: (Item, List<Item>) -> Unit) {
+@Composable fun Guide(nav: Nav, onLong: (Item) -> Unit, onPlay: (Item, List<Item>) -> Unit) {
     val cs = MaterialTheme.colorScheme
     val t = Repo.tick
     val hc = Repo.list("hc_live")
@@ -549,7 +590,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
         LazyColumn(state = gls, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(chans) { ch ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Tile(Repo.label(ch), mod = Modifier.width(nameW).padding(end = 6.dp), fr = if (ch.id == lid) fr else null) { onPlay(ch, chans) }
+                    Tile((if (Repo.isFav(ch)) "♥ " else "") + Repo.label(ch), onLong = { onLong(ch) }, mod = Modifier.width(nameW).padding(end = 6.dp), fr = if (ch.id == lid) fr else null) { onPlay(ch, chans) }
                     Row(Modifier.weight(1f).horizontalScroll(sc)) {
                         var cur = gs
                         val ps = Repo.guideProgs(ch).filter { it.e > gs && it.s < ge }

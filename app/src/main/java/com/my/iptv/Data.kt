@@ -33,6 +33,16 @@ object Repo {
     var onMenu: (() -> Unit)? = null
     var organise by mutableStateOf(true)
     var onZap: ((Int) -> Boolean)? = null
+    var favKeys by mutableStateOf<List<String>>(emptyList())
+    private fun fkey(i: Item) = "${i.type}|${i.id}"
+    fun isFav(i: Item) = fkey(i) in favKeys
+    fun toggleFav(i: Item) {
+        val k = fkey(i)
+        favKeys = if (k in favKeys) favKeys - k else listOf(k) + favKeys
+        sp.edit().putString("fav", JSONArray(favKeys).toString()).apply()
+    }
+    fun favItems(type: String): List<Item> = favKeys.mapNotNull { byKey[it] }.filter { it.type == type }
+
     var fastLive by mutableStateOf(true)
     fun toggleFast() { fastLive = !fastLive; sp.edit().putBoolean("fast", fastLive).apply() }
     // Xtream live: raw .ts starts much faster than HLS (.m3u8)
@@ -105,7 +115,7 @@ object Repo {
     private fun norm(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
 
     fun init(c: Context) {
-        dir = c.filesDir; sp = c.getSharedPreferences("p", 0); organise = sp.getBoolean("org", true); sleepHours = sp.getInt("sleep", 4); fastLive = sp.getBoolean("fast", true)
+        dir = c.filesDir; sp = c.getSharedPreferences("p", 0); organise = sp.getBoolean("org", true); sleepHours = sp.getInt("sleep", 4); fastLive = sp.getBoolean("fast", true); favKeys = list("fav")
         sp.getString("acc", null)?.let {
             val o = JSONObject(it)
             account = Account(o.getString("n"), o.getBoolean("x"), o.getString("s"), o.getString("u"), o.getString("p"), o.optString("e"))
