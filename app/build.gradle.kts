@@ -10,8 +10,8 @@ android {
         applicationId = "com.my.iptv"
         minSdk = 21
         targetSdk = 34
-        versionCode = 4
-        versionName = "4"
+        versionCode = 6
+        versionName = "6"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }

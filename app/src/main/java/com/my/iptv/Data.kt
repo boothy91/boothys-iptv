@@ -39,6 +39,7 @@ object Repo {
     var onMenu: (() -> Unit)? = null
     var organise by mutableStateOf(true)
     var onZap: ((Int) -> Boolean)? = null
+    var onMedia: ((Int) -> Boolean)? = null
     var favKeys by mutableStateOf<List<String>>(emptyList())
     private fun fkey(i: Item) = "${i.type}|${i.id}"
     fun isFav(i: Item) = fkey(i) in favKeys

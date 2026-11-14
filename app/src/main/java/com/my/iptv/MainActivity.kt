@@ -84,6 +84,13 @@ class MainActivity : ComponentActivity() {
         Repo.lastInput = System.currentTimeMillis()
         val m = Repo.onMenu
         if (m != null && e.keyCode == AKE.KEYCODE_MENU) { if (e.action == AKE.ACTION_UP) m(); return true }
+        val md = Repo.onMedia
+        if (md != null) {
+            val k = e.keyCode
+            val mk = k == AKE.KEYCODE_MEDIA_PLAY_PAUSE || k == AKE.KEYCODE_MEDIA_PLAY || k == AKE.KEYCODE_MEDIA_PAUSE ||
+                k == AKE.KEYCODE_MEDIA_STOP || k == AKE.KEYCODE_MEDIA_FAST_FORWARD || k == AKE.KEYCODE_MEDIA_REWIND || k == AKE.KEYCODE_HEADSETHOOK
+            if (mk) { if (e.action == AKE.ACTION_DOWN && e.repeatCount == 0) md(k); return true }
+        }
         val z = Repo.onZap
         if (z != null) {
             val dir = when (e.keyCode) {
@@ -628,12 +635,18 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     }
 }
 
+fun focusPlay(p: PlayerView) {
+    val id = p.resources.getIdentifier("exo_play_pause", "id", p.context.packageName)
+    if (id != 0) p.findViewById<View>(id)?.requestFocus()
+}
+
 @Composable fun Player(req: PlayReq, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val act = ctx as? ComponentActivity
     var mode by remember { mutableStateOf(Repo.sp.getInt("aspect", 0)) }
     var ctrl by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    val menuNow = rememberUpdatedState(menu)
     var banner by remember { mutableStateOf(if (req.type == "live") "show" else "") }
     var cur by remember { mutableStateOf(req.url) }
     var idx by remember { mutableStateOf(req.idx) }
@@ -671,6 +684,20 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
         w?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         Repo.lastInput = System.currentTimeMillis()
         Repo.onMenu = { menu = !menu }
+        Repo.onMedia = { k ->
+            when (k) {
+                AKE.KEYCODE_MEDIA_PLAY_PAUSE, AKE.KEYCODE_HEADSETHOOK -> {
+                    if (!ex.playWhenReady && ex.isCurrentMediaItemLive) ex.seekToDefaultPosition()
+                    ex.playWhenReady = !ex.playWhenReady; true
+                }
+                AKE.KEYCODE_MEDIA_PLAY -> { if (ex.isCurrentMediaItemLive) ex.seekToDefaultPosition(); ex.playWhenReady = true; true }
+                AKE.KEYCODE_MEDIA_PAUSE -> { ex.playWhenReady = false; true }
+                AKE.KEYCODE_MEDIA_STOP -> { onBack(); true }
+                AKE.KEYCODE_MEDIA_FAST_FORWARD -> { if (!ex.isCurrentMediaItemLive) ex.seekTo(ex.currentPosition + 30000); true }
+                AKE.KEYCODE_MEDIA_REWIND -> { if (!ex.isCurrentMediaItemLive) ex.seekTo(maxOf(0L, ex.currentPosition - 10000)); true }
+                else -> false
+            }
+        }
         Repo.onZap = { dir ->
             if (ctrl || menu || req.list.size < 2) false
             else {
@@ -688,10 +715,10 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
                 if (req.list.isEmpty() && !ex.isCurrentMediaItemLive && d > 0) Repo.saveCW(cur, req.name, req.icon, req.type, ex.currentPosition, d)
             }
             w?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            Repo.onMenu = null; Repo.onZap = null; ex.release(); c?.show(WindowInsetsCompat.Type.systemBars())
+            Repo.onMenu = null; Repo.onZap = null; Repo.onMedia = null; ex.release(); c?.show(WindowInsetsCompat.Type.systemBars())
         }
     }
-    LaunchedEffect(menu) { if (menu) runCatching { fr.requestFocus() } else pv?.requestFocus() }
+    LaunchedEffect(menu) { if (menu) runCatching { fr.requestFocus() } else pv?.let { if (it.isControllerFullyVisible) focusPlay(it) else it.requestFocus() } }
     LaunchedEffect(Unit) {
         while (true) {
             delay(30_000)
@@ -710,7 +737,11 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
         AndroidView({ c ->
             PlayerView(c).apply {
                 player = ex; useController = true; resizeMode = rm; isFocusable = true; requestFocus()
-                setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> ctrl = v == View.VISIBLE })
+                val pvv = this
+                setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v ->
+                    ctrl = v == View.VISIBLE
+                    if (v == View.VISIBLE && !menuNow.value) pvv.post { focusPlay(pvv) }
+                })
                 pv = this
             }
         }, Modifier.fillMaxSize(), update = { it.resizeMode = rm })
