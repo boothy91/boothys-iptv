@@ -3,6 +3,8 @@
 package com.my.iptv
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent as AKE
 import android.view.View
 import android.view.WindowManager
@@ -10,6 +12,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -36,6 +39,8 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
@@ -44,6 +49,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -63,6 +69,9 @@ import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -259,6 +268,20 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     var e by remember { mutableStateOf("") }
     val nx = KeyboardOptions(imeAction = ImeAction.Next)
     val sh = RoundedCornerShape(16.dp)
+    var phone by remember { mutableStateOf(false) }
+    var link by remember { mutableStateOf("") }
+    DisposableEffect(phone) {
+        if (!phone) { onDispose { } }
+        else {
+            val srv = PairServer { m ->
+                Handler(Looper.getMainLooper()).post {
+                    onDone(Account((m["n"] ?: "").ifBlank { "My IPTV" }, m["type"] != "m", (m["s"] ?: "").trim(), (m["u"] ?: "").trim(), (m["p"] ?: "").trim(), (m["e"] ?: "").trim()))
+                }
+            }
+            link = srv.start()
+            onDispose { srv.stop() }
+        }
+    }
     Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
         Column(
             Modifier.widthIn(max = 560.dp).verticalScroll(rememberScrollState()).background(cs.surfaceVariant, RoundedCornerShape(28.dp)).padding(28.dp),
@@ -268,6 +291,17 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Tile("Xtream Code", sel = x, pill = true) { x = true }
                 Tile("M3U8", sel = !x, pill = true) { x = false }
+            }
+            Tile(if (phone) "Hide phone setup" else "Fill in from your phone (QR code)", pill = true) { phone = !phone }
+            if (phone && link.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Qr(link, 170.dp)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Scan with your phone camera", color = cs.onSurface, fontWeight = FontWeight.SemiBold)
+                        Text("or open this address in a browser on the same Wi-Fi:", color = cs.onSurfaceVariant, fontSize = 13.sp)
+                        Text(link, color = cs.primary, fontSize = 15.sp)
+                    }
+                }
             }
             OutlinedTextField(n, { n = it }, Modifier.fillMaxWidth(), label = { Text("Playlist Name") }, singleLine = true, keyboardOptions = nx, shape = sh)
             OutlinedTextField(s, { s = it }, Modifier.fillMaxWidth(), label = { Text(if (x) "Server (http://host:port)" else "M3U8 URL") }, singleLine = true, keyboardOptions = nx, shape = sh)
@@ -835,5 +869,14 @@ fun focusPlay(p: PlayerView) {
                 }
             }
         }
+    }
+}
+
+@Composable fun Qr(text: String, size: Dp) {
+    val m = remember(text) { QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 0, 0, mapOf(EncodeHintType.MARGIN to 2)) }
+    Canvas(Modifier.size(size).background(Color.White)) {
+        val cell = this.size.width / m.width
+        for (x in 0 until m.width) for (y in 0 until m.height)
+            if (m.get(x, y)) drawRect(Color.Black, Offset(x * cell, y * cell), Size(cell + 0.6f, cell + 0.6f))
     }
 }
