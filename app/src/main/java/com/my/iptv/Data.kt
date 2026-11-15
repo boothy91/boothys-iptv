@@ -120,10 +120,37 @@ object Repo {
     }
 
     var fastLive by mutableStateOf(true)
-    fun toggleFast() { fastLive = !fastLive; sp.edit().putBoolean("fast", fastLive).apply() }
+    @Volatile var tsBad = false
+    fun toggleFast() { fastLive = !fastLive; tsBad = false; sp.edit().putBoolean("fast", fastLive).apply() }
+
+    // ---------- categories: chosen country prefix (e.g. "UK|") listed first ----------
+    var firstPrefix by mutableStateOf("EN")
+    private val catPre = Regex("^[\\s|\\[(]*([A-Za-z0-9+-]{2,8})[\\s\\])]*[|:\\-–»>/]+")
+    fun prefixOf(n: String): String? = catPre.find(n)?.groupValues?.get(1)?.uppercase()
+    fun prefFirst(l: List<Cat>): List<Cat> {
+        val p = firstPrefix
+        if (p.isEmpty()) return l
+        val (a, b) = l.partition { prefixOf(it.name) == p }
+        return a + b
+    }
+    fun cyclePrefix() {
+        val found = cats.mapNotNull { prefixOf(it.name) }.groupingBy { it }.eachCount().filter { it.value >= 2 }
+            .entries.sortedByDescending { it.value }.map { it.key }.take(12)
+        val opts = listOf("") + found
+        firstPrefix = opts[(opts.indexOf(firstPrefix) + 1) % opts.size]
+        sp.edit().putString("pfx", firstPrefix).apply(); tick++
+    }
+
+    var showTiming by mutableStateOf(true)
+    fun toggleTiming() { showTiming = !showTiming; sp.edit().putBoolean("timing", showTiming).apply() }
+
+    val uas = listOf("Mozilla/5.0" to "Browser", "VLC/3.0.18 LibVLC/3.0.18" to "VLC", "ExoPlayer" to "ExoPlayer")
+    var uaIdx by mutableIntStateOf(0)
+    fun ua(): String = uas[uaIdx.coerceIn(0, uas.size - 1)].first
+    fun cycleUa() { uaIdx = (uaIdx + 1) % uas.size; sp.edit().putInt("ua", uaIdx).apply() }
     // Xtream live: raw .ts starts much faster than HLS (.m3u8)
     fun playUrl(u: String): String =
-        if (fastLive && account?.xtream == true && "/live/" in u && u.endsWith(".m3u8")) u.removeSuffix(".m3u8") + ".ts" else u
+        if (fastLive && !tsBad && account?.xtream == true && "/live/" in u && u.endsWith(".m3u8")) u.removeSuffix(".m3u8") + ".ts" else u
 
     @Volatile var lastInput = System.currentTimeMillis()
     var sleepHours by mutableIntStateOf(4)
@@ -158,7 +185,7 @@ object Repo {
     private val hdRe = Regex("\\bHD\\b", RegexOption.IGNORE_CASE)
     private val junkRe = Regex("[^\\p{L}\\p{N}]+")
 
-    private val cc = "UK|GB|US|USA|CA|AU|NZ|IE|DE|FR|ES|IT|PT|NL|BE|PL|TR|IN|PK|AE|SA|MX|BR|AR|SE|NO|DK|FI|RU|GR|AL|RO|CH|AT|IL|ZA|NG|EG|AF|IR|KR|JP|CN|LATAM|ARAB|EX-YU"
+    private val cc = "EN|AR|HI|UR|PA|TA|UK|GB|US|USA|CA|AU|NZ|IE|DE|FR|ES|IT|PT|NL|BE|PL|TR|IN|PK|AE|SA|MX|BR|AR|SE|NO|DK|FI|RU|GR|AL|RO|CH|AT|IL|ZA|NG|EG|AF|IR|KR|JP|CN|LATAM|ARAB|EX-YU"
     private val prefixRe = Regex("^[\\s|\\[(]*(?:$cc)[\\s\\])]*[|:\\-–»>/]+\\s*")
 
     // "UK| Twitch HD" / "UK | Twitch HD" / "US: Twitch HD" -> "Twitch HD"
@@ -193,7 +220,7 @@ object Repo {
     fun init(c: Context) {
         appCtx = c.applicationContext
         runCatching { File(c.cacheDir, "update").deleteRecursively(); File(c.externalCacheDir, "update").deleteRecursively() }
-        dir = c.filesDir; sp = c.getSharedPreferences("p", 0); organise = sp.getBoolean("org", true); sleepHours = sp.getInt("sleep", 4); fastLive = sp.getBoolean("fast", true); favKeys = list("fav")
+        dir = c.filesDir; sp = c.getSharedPreferences("p", 0); organise = sp.getBoolean("org", true); sleepHours = sp.getInt("sleep", 4); fastLive = sp.getBoolean("fast", true); favKeys = list("fav"); showTiming = sp.getBoolean("timing", true); firstPrefix = sp.getString("pfx", "EN") ?: "EN"; uaIdx = sp.getInt("ua", 0)
         sp.getString("acc", null)?.let {
             val o = JSONObject(it)
             account = Account(o.getString("n"), o.getBoolean("x"), o.getString("s"), o.getString("u"), o.getString("p"), o.optString("e"))

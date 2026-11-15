@@ -417,7 +417,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
             }
         } else {
             val pins = Repo.list("pc_$tab")
-            val l = Repo.pinFirst(Repo.cats.filter { it.type == tab && it.id !in hc }, pins) { it.id }
+            val l = Repo.pinFirst(Repo.prefFirst(Repo.cats.filter { it.type == tab && it.id !in hc }), pins) { it.id }
             val rec = Repo.list("r_$tab").mapNotNull { Repo.byKey[it] }.filter { it.id !in hi }
             val cw = if (poster) Repo.cwList().filter { it.type == tab } else emptyList()
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -547,6 +547,9 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
             aspect = (aspect + 1) % 3; Repo.sp.edit().putInt("aspect", aspect).apply()
         }
         Tile("Faster live start: " + if (Repo.fastLive) "On" else "Off", "Uses direct streams instead of HLS where the server allows it. Turn off if a channel won't play", mod = Modifier.fillMaxWidth()) { Repo.toggleFast() }
+        Tile("Country first: " + Repo.firstPrefix.ifEmpty { "Off" }, "Categories starting with this prefix (like |EN|) are listed first. Tap to cycle through the ones in your playlist", mod = Modifier.fillMaxWidth()) { Repo.cyclePrefix() }
+        Tile("Playback timing: " + if (Repo.showTiming) "On" else "Off", "Shows how long a stream took to start and which format it used", mod = Modifier.fillMaxWidth()) { Repo.toggleTiming() }
+        Tile("Stream identity: " + Repo.uas[Repo.uaIdx].second, "Some providers respond faster to certain apps. Try each one", mod = Modifier.fillMaxWidth()) { Repo.cycleUa() }
         Tile("Sleep timer: " + (if (Repo.sleepHours == 0) "Off" else "${Repo.sleepHours}h"), "Stops playback after this long with no remote or touch input, so the screensaver can start", mod = Modifier.fillMaxWidth()) { Repo.cycleSleep() }
         Tile("Check for updates", Repo.updCheck.ifEmpty { "Installed version: ${Repo.ver()}" }, mod = Modifier.fillMaxWidth()) { Repo.checkUpdate(true) }
         Tile("Unhide everything", "$hidden hidden categories / channels", mod = Modifier.fillMaxWidth()) { Repo.clearHidden() }
@@ -583,7 +586,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     val t = Repo.tick
     val hc = Repo.list("hc_live")
     val hi = Repo.list("hi_live")
-    val cl = Repo.pinFirst(Repo.cats.filter { it.type == "live" && it.id !in hc }, Repo.list("pc_live")) { it.id }
+    val cl = Repo.pinFirst(Repo.prefFirst(Repo.cats.filter { it.type == "live" && it.id !in hc }), Repo.list("pc_live")) { it.id }
     val cat = nav.gcat ?: cl.firstOrNull()
     val chans = remember(cat?.id, Repo.tick, Repo.organise) {
         if (cat == null) emptyList() else Repo.organised((Repo.byCat["live|${cat.id}"] ?: emptyList()).filter { it.id !in hi })
@@ -652,11 +655,14 @@ fun focusPlay(p: PlayerView) {
     var idx by remember { mutableStateOf(req.idx) }
     val chan = if (req.list.isNotEmpty()) req.list[idx.coerceIn(0, req.list.size - 1)] else req.ch
     var pv by remember { mutableStateOf<PlayerView?>(null) }
+    var t0 by remember { mutableStateOf(System.currentTimeMillis()) }
+    var startMs by remember { mutableStateOf(-1L) }
+    var fmt by remember { mutableStateOf("") }
     val fr = remember { FocusRequester() }
     val ex = remember {
         val live = req.type == "live"
-        val http = DefaultHttpDataSource.Factory().setUserAgent("Mozilla/5.0").setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(8000).setReadTimeoutMs(10000)
+        val http = DefaultHttpDataSource.Factory().setUserAgent(Repo.ua()).setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(6000).setReadTimeoutMs(5000)
         val ext = DefaultExtractorsFactory().setTsExtractorFlags(
             DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS)
         val lc = (if (live) DefaultLoadControl.Builder().setBufferDurationsMs(8000, 40000, 400, 1500)
@@ -668,9 +674,16 @@ fun focusPlay(p: PlayerView) {
             setMediaItem(MediaItem.fromUri(Repo.playUrl(req.url)), if (saved > 10000) saved else 0L)
             // if a server doesn't support raw .ts, fall back to HLS
             addListener(object : Player.Listener {
+                override fun onRenderedFirstFrame() {
+                    if (startMs < 0) {
+                        startMs = System.currentTimeMillis() - t0
+                        val u = p.currentMediaItem?.localConfiguration?.uri?.toString() ?: ""
+                        fmt = if (u.endsWith(".ts")) "TS" else if (u.contains(".m3u8")) "HLS" else "file"
+                    }
+                }
                 override fun onPlayerError(error: PlaybackException) {
                     val u = p.currentMediaItem?.localConfiguration?.uri?.toString() ?: return
-                    if (u.endsWith(".ts") && "/live/" in u) { p.setMediaItem(MediaItem.fromUri(u.removeSuffix(".ts") + ".m3u8")); p.prepare() }
+                    if (u.endsWith(".ts") && "/live/" in u) { Repo.tsBad = true; p.setMediaItem(MediaItem.fromUri(u.removeSuffix(".ts") + ".m3u8")); p.prepare() }
                 }
             })
             prepare(); playWhenReady = true
@@ -704,6 +717,7 @@ fun focusPlay(p: PlayerView) {
                 idx = (idx + dir + req.list.size) % req.list.size
                 val ch = req.list[idx]
                 cur = ch.url
+                startMs = -1L; t0 = System.currentTimeMillis()
                 ex.setMediaItem(MediaItem.fromUri(Repo.playUrl(ch.url))); ex.prepare(); ex.playWhenReady = true
                 banner = Repo.label(ch) + (Repo.nowProg(ch)?.let { "  •  ${it.t}" } ?: "")
                 true
@@ -726,6 +740,7 @@ fun focusPlay(p: PlayerView) {
             if (h > 0 && System.currentTimeMillis() - Repo.lastInput > h * 3600_000L) { onBack(); break }
         }
     }
+    LaunchedEffect(startMs) { if (startMs >= 0 && Repo.showTiming) banner = "t$startMs" }
     LaunchedEffect(banner) { if (banner.isNotEmpty()) { delay(2500); banner = "" } }
     BackHandler { if (menu) menu = false else if (ctrl) pv?.hideController() else onBack() }
     val rm = when (mode) {
@@ -762,6 +777,7 @@ fun focusPlay(p: PlayerView) {
                 Text(if (chan != null) Repo.label(chan) else req.name, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 2)
                 if (chan != null) {
                     Text(if (n != null) "Now  ${hm(n.s)}–${hm(n.e)}  ${n.t}" else "Now  No guide data", color = Color(0xFFE2E8F0), fontSize = 15.sp, maxLines = 1)
+                    if (Repo.showTiming && startMs >= 0) Text("Started in ${"%.1f".format(startMs / 1000.0)}s · $fmt", color = Color(0xFF7DD3A8), fontSize = 13.sp)
                     if (x != null) Text("Next  ${hm(x.s)}–${hm(x.e)}  ${x.t}", color = Color(0xFF9AA7BD), fontSize = 15.sp, maxLines = 1)
                 }
             }
