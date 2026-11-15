@@ -129,6 +129,7 @@ class Nav {
     var settings by mutableStateOf(false)
     var gcat by mutableStateOf<Cat?>(null)
     var favs by mutableStateOf(false)
+    var home by mutableStateOf(true)
     var lastId: String? = null
 }
 
@@ -186,7 +187,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
 }
 
 @OptIn(ExperimentalFoundationApi::class)
-@Composable fun Tile(text: String, sub: String = "", sel: Boolean = false, onLong: (() -> Unit)? = null, mod: Modifier = Modifier, pill: Boolean = false, lines: Int = 1, fr: FocusRequester? = null, onClick: () -> Unit) {
+@Composable fun Tile(text: String, sub: String = "", sel: Boolean = false, onLong: (() -> Unit)? = null, mod: Modifier = Modifier, pill: Boolean = false, lines: Int = 1, onFocus: (() -> Unit)? = null, fr: FocusRequester? = null, onClick: () -> Unit) {
     var f by remember { mutableStateOf(false) }
     val cs = MaterialTheme.colorScheme
     val sc by animateFloatAsState(if (f) 1.04f else 1f, label = "s")
@@ -194,7 +195,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     Column(
         mod.scale(sc)
             .then(if (fr != null) Modifier.focusRequester(fr) else Modifier)
-            .onFocusChanged { f = it.hasFocus }
+            .onFocusChanged { f = it.hasFocus; if (it.hasFocus) onFocus?.invoke() }
             .longKeys(onLong)
             .background(if (f) cs.primary else if (sel) cs.secondaryContainer else cs.surfaceVariant, shape)
             .clip(shape)
@@ -306,7 +307,6 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
 @Composable fun Home(nav: Nav, dark: Boolean, onTheme: () -> Unit, onLogout: () -> Unit, onPlay: (PlayReq) -> Unit) {
     val t = Repo.tick
     val cs = MaterialTheme.colorScheme
-    val types = listOf("live" to "Live TV", "movie" to "Movies", "series" to "Series")
     var tab by nav::tab
     var cat by nav::cat
     var ser by nav::ser
@@ -314,17 +314,20 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     var guide by nav::guide
     var settings by nav::settings
     var favs by nav::favs
+    var home by nav::home
     var foc by remember { mutableStateOf<Item?>(null) }
     var dlg by remember { mutableStateOf<Dlg?>(null) }
+    fun go(s: String) {
+        searching = false; guide = false; settings = false; favs = false; home = false; ser = null; cat = null; foc = null
+        when (s) { "home" -> home = true; "guide" -> guide = true; "favs" -> favs = true; "search" -> searching = true; "settings" -> settings = true; else -> tab = s }
+    }
+    val overlay = searching || guide || settings || favs
     BackHandler(ser != null) { ser = null }
-    BackHandler(cat != null && ser == null) { cat = null }
-    BackHandler(searching) { searching = false }
-    BackHandler(guide) { guide = false }
-    BackHandler(settings) { settings = false }
-    BackHandler(favs) { favs = false }
+    BackHandler(cat != null && ser == null && tab != "live" && !overlay && !home) { cat = null }
+    BackHandler(overlay || (!home && ser == null && (cat == null || tab == "live"))) { go("home") }
     fun open(i: Item, list: List<Item> = emptyList()) {
         nav.lastId = i.id
-        if (i.type == "series" && i.url.isEmpty()) { Repo.addRecent(i); ser = i }
+        if (i.type == "series" && i.url.isEmpty()) { Repo.addRecent(i); go("series"); ser = i }
         else {
             if (i.type != "episode") Repo.addRecent(i)
             val z = if (i.type == "live") list else emptyList()
@@ -342,119 +345,109 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
             "Hide" to { Repo.toggle(hideKey, id) }
         ))
     }
-    val hc = Repo.list("hc_$tab")
-    val hi = Repo.list("hi_$tab")
-    val poster = tab != "live"
-    LaunchedEffect(Unit) { Repo.checkUpdate() }
+    fun cwMenu(w: CW) { dlg = Dlg(w.name, listOf("Remove from Continue Watching" to { Repo.removeCW(w.url) })) }
     val loading = Repo.items.isEmpty() && !Repo.status.startsWith("Load failed") && !Repo.status.startsWith("Problem")
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
-        Repo.update?.let { UpdateBanner(it) }
-        Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            types.forEach { (k, l) -> Tile(l, sel = tab == k && !searching && !guide && !settings && !favs, pill = true) { tab = k; cat = null; ser = null; foc = null; searching = false; guide = false; settings = false; favs = false } }
-            Tile("♥ Favourites", sel = favs, pill = true) { favs = true; searching = false; guide = false; settings = false; ser = null; foc = null }
-            Tile("Update", pill = true) { Repo.refresh() }
-            Tile("Search", sel = searching, pill = true) { searching = true; guide = false; settings = false; favs = false }
-            Tile("TV Guide", sel = guide, pill = true) { guide = true; searching = false; settings = false; favs = false }
-            Tile("Settings", sel = settings, pill = true) { settings = true; searching = false; guide = false; favs = false }
+    val section = if (settings) "settings" else if (guide) "guide" else if (favs) "favs" else if (searching) "search" else if (home) "home" else tab
+    LaunchedEffect(Unit) { Repo.checkUpdate() }
+    Row(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.width(190.dp).fillMaxHeight().background(cs.surfaceVariant.copy(alpha = 0.45f)).verticalScroll(rememberScrollState()).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text("Boothys IPTV", color = cs.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 10.dp))
+            listOf("home" to "Home", "live" to "Live TV", "movie" to "Movies", "series" to "Series", "guide" to "TV Guide", "favs" to "Favourites", "search" to "Search")
+                .forEach { (k, l) -> Tile(l, sel = section == k, mod = Modifier.fillMaxWidth()) { go(k) } }
+            Spacer(Modifier.height(10.dp))
+            Tile("Update", mod = Modifier.fillMaxWidth()) { Repo.refresh() }
+            Tile("Settings", sel = section == "settings", mod = Modifier.fillMaxWidth()) { go("settings") }
         }
-        if (Repo.status.isNotEmpty()) Text(Repo.status, color = cs.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
-        Spacer(Modifier.height(12.dp))
-        val c = cat
-        val sr = ser
-        if (settings) {
-            Box(Modifier.weight(1f)) { Settings(dark, onTheme, onLogout) }
-        } else if (guide) {
-            Box(Modifier.weight(1f)) { Guide(nav, { favMenu(it) }) { ch, l -> open(ch, l) } }
-        } else if (favs) {
-            Box(Modifier.weight(1f)) {
-                Favourites({ foc = it }, { favMenu(it) }) { i, l ->
-                    if (i.type == "series" && i.url.isEmpty()) { favs = false; tab = "series"; cat = null }
-                    open(i, l)
-                }
-            }
-        } else if (searching) {
-            Box(Modifier.weight(1f)) {
-                Search({ favMenu(it) }) { i ->
-                    if (i.type == "series" && i.url.isEmpty()) { searching = false; tab = "series"; cat = null }
-                    open(i)
-                }
-            }
-        } else if (loading) {
-            Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                CircularProgressIndicator(Modifier.size(36.dp))
-                Spacer(Modifier.height(16.dp))
-                Text("Loading your playlist…", color = cs.onSurfaceVariant)
-            }
-        } else if (sr != null) {
-            Box(Modifier.weight(1f)) { Episodes(sr) { open(it) } }
-        } else if (c != null) {
-            val pins = Repo.list("pi_$tab")
-            val shown = remember(c.id, tab, Repo.tick, Repo.organise) {
-                val b = (Repo.byCat["$tab|${c.id}"] ?: emptyList()).filter { it.id !in hi }
-                if (tab == "live") Repo.organised(b) else b
-            }
-            val l = Repo.pinFirst(shown, pins) { it.id }
-            val lid = remember(c.id) { nav.lastId }
-            val idx0 = remember(c.id) { l.indexOfFirst { it.id == lid } }
-            val fr = remember(c.id) { FocusRequester() }
-            val ls = rememberLazyListState(maxOf(idx0, 0))
-            val gs = rememberLazyGridState(maxOf(idx0, 0))
-            LaunchedEffect(c.id) { if (idx0 >= 0) { delay(150); runCatching { fr.requestFocus() }; nav.lastId = null } }
-            if (poster) {
-                LazyVerticalGrid(GridCells.Fixed(5), Modifier.weight(1f), state = gs, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(l) { i -> Poster(i, i.id in pins, { foc = it }, { menu(i.name, "pi_$tab", "hi_$tab", i.id, pins, i) }, fr = if (i.id == lid) fr else null) { open(i) } }
-                }
-            } else {
-                LazyColumn(Modifier.weight(1f), state = ls, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(l) { i ->
-                        val p = Repo.nowProg(i)
-                        Tile((if (Repo.isFav(i)) "♥ " else "") + (if (i.id in pins) "★ " else "") + Repo.label(i),
-                            if (p != null) "${hm(p.s)}-${hm(p.e)}  ${p.t}" + (Repo.nextProg(i)?.let { "   ›  ${hm(it.s)} ${it.t}" } ?: "") else "",
-                            onLong = { menu(i.name, "pi_$tab", "hi_$tab", i.id, pins, i) },
-                            mod = Modifier.fillMaxWidth(), fr = if (i.id == lid) fr else null) { open(i, l) }
+        Column(Modifier.weight(1f).fillMaxHeight().padding(24.dp)) {
+            Repo.update?.let { UpdateBanner(it) }
+            if (Repo.status.isNotEmpty()) Text(Repo.status, color = cs.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+            val sr = ser
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when {
+                    settings -> Settings(dark, onTheme, onLogout)
+                    guide -> Guide(nav, { favMenu(it) }) { ch, l -> open(ch, l) }
+                    favs -> Favourites({ foc = it }, { favMenu(it) }) { i, l -> open(i, l) }
+                    searching -> Search({ favMenu(it) }) { i -> open(i) }
+                    loading -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        CircularProgressIndicator(Modifier.size(36.dp))
+                        Spacer(Modifier.height(16.dp))
+                        Text("Loading your playlist…", color = cs.onSurfaceVariant)
                     }
-                }
-            }
-        } else {
-            val pins = Repo.list("pc_$tab")
-            val l = Repo.pinFirst(Repo.prefFirst(Repo.cats.filter { it.type == tab && it.id !in hc }), pins) { it.id }
-            val rec = Repo.list("r_$tab").mapNotNull { Repo.byKey[it] }.filter { it.id !in hi }
-            val cw = if (poster) Repo.cwList().filter { it.type == tab } else emptyList()
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (cw.isNotEmpty()) {
-                    item { Text("Continue Watching", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
-                    item {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(cw) { w ->
-                                Poster(Item(w.url, w.name, "", w.type, w.url, "", w.icon), false, { },
-                                    { dlg = Dlg(w.name, listOf("Remove from Continue Watching" to { Repo.removeCW(w.url) })) },
-                                    Modifier.width(130.dp), progress = if (w.dur > 0) w.pos.toFloat() / w.dur else 0f) {
-                                    onPlay(PlayReq(w.url, emptyList(), 0, w.name, w.icon, w.type))
+                    home -> Overview(null, { }, { i, l -> open(i, l) }, onPlay, { favMenu(it) }, { cwMenu(it) })
+                    sr != null -> Episodes(sr) { open(it) }
+                    tab == "live" -> {
+                        val pc = Repo.list("pc_live"); val hcl = Repo.list("hc_live"); val hil = Repo.list("hi_live"); val pil = Repo.list("pi_live")
+                        val cl = Repo.pinFirst(Repo.prefFirst(Repo.cats.filter { it.type == "live" && it.id !in hcl }), pc) { it.id }
+                        val c = cat ?: cl.firstOrNull()
+                        val l = remember(c?.id, Repo.tick, Repo.organise) {
+                            if (c == null) emptyList()
+                            else Repo.pinFirst(Repo.organised((Repo.byCat["live|${c.id}"] ?: emptyList()).filter { it.id !in hil }), pil) { it.id }
+                        }
+                        val lid = remember(c?.id) { nav.lastId }
+                        val idx0 = remember(c?.id) { l.indexOfFirst { it.id == lid } }
+                        val fr = remember(c?.id) { FocusRequester() }
+                        val ls = rememberLazyListState(maxOf(idx0, 0))
+                        LaunchedEffect(c?.id) { if (idx0 >= 0) { delay(150); runCatching { fr.requestFocus() }; nav.lastId = null } }
+                        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            LazyColumn(Modifier.width(210.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(cl) { k ->
+                                    Tile((if (k.id in pc) "★ " else "") + k.name, sel = k.id == c?.id, lines = 2,
+                                        onLong = { menu(k.name, "pc_live", "hc_live", k.id, pc) }, mod = Modifier.fillMaxWidth()) { cat = k; foc = null }
+                                }
+                            }
+                            LazyColumn(Modifier.weight(1f).fillMaxHeight(), state = ls, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(l) { i ->
+                                    val p = Repo.nowProg(i)
+                                    Tile((if (Repo.isFav(i)) "♥ " else "") + (if (i.id in pil) "★ " else "") + Repo.label(i),
+                                        if (p != null) "${hm(p.s)}-${hm(p.e)}  ${p.t}" + (Repo.nextProg(i)?.let { "   ›  ${hm(it.s)} ${it.t}" } ?: "") else "",
+                                        onLong = { menu(i.name, "pi_live", "hi_live", i.id, pil, i) }, onFocus = { foc = i },
+                                        mod = Modifier.fillMaxWidth(), fr = if (i.id == lid) fr else null) { open(i, l) }
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        val pinsC = Repo.list("pc_$tab"); val pinsI = Repo.list("pi_$tab"); val hcm = Repo.list("hc_$tab"); val him = Repo.list("hi_$tab")
+                        val cl = Repo.pinFirst(Repo.prefFirst(Repo.cats.filter { it.type == tab && it.id !in hcm }), pinsC) { it.id }
+                        val allCat = remember(tab) { Cat("__all", "All", tab) }
+                        Column(Modifier.fillMaxSize()) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                item { Tile("Overview", sel = cat == null, pill = true) { cat = null; foc = null } }
+                                item { Tile("All", sel = cat?.id == "__all", pill = true) { cat = allCat; foc = null } }
+                                items(cl) { k ->
+                                    Tile((if (k.id in pinsC) "★ " else "") + k.name, sel = cat?.id == k.id, pill = true,
+                                        onLong = { menu(k.name, "pc_$tab", "hc_$tab", k.id, pinsC) }) { cat = k; foc = null }
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            val c = cat
+                            if (c == null) Overview(tab, { foc = it }, { i, l -> open(i, l) }, onPlay, { favMenu(it) }, { cwMenu(it) })
+                            else {
+                                val l = remember(c.id, Repo.tick) {
+                                    Repo.pinFirst((if (c.id == "__all") Repo.items.filter { it.type == tab } else (Repo.byCat["$tab|${c.id}"] ?: emptyList())).filter { it.id !in him }, pinsI) { it.id }
+                                }
+                                val lid = remember(c.id) { nav.lastId }
+                                val idx0 = remember(c.id) { l.indexOfFirst { it.id == lid } }
+                                val fr = remember(c.id) { FocusRequester() }
+                                val gs = rememberLazyGridState(maxOf(idx0, 0))
+                                LaunchedEffect(c.id) { if (idx0 >= 0) { delay(150); runCatching { fr.requestFocus() }; nav.lastId = null } }
+                                LazyVerticalGrid(GridCells.Fixed(5), Modifier.fillMaxSize(), state = gs, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    items(l) { i -> Poster(i, i.id in pinsI, { foc = it }, { menu(i.name, "pi_$tab", "hi_$tab", i.id, pinsI, i) }, fr = if (i.id == lid) fr else null) { open(i) } }
                                 }
                             }
                         }
                     }
                 }
-                if (rec.isNotEmpty()) {
-                    item { Text("Recent", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
-                    item {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(rec) { i ->
-                                if (poster) Poster(i, false, { foc = it }, { menu(i.name, "pi_$tab", "hi_$tab", i.id, emptyList(), i) }, Modifier.width(130.dp)) { open(i) }
-                                else Tile(Repo.label(i), Repo.nowProg(i)?.t ?: "", lines = 2, mod = Modifier.width(280.dp)) { open(i) }
-                            }
-                        }
-                    }
-                }
-                item { Text("Categories", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
-                items(l) { k ->
-                    Tile((if (k.id in pins) "★ " else "") + k.name, "${Repo.byCat["$tab|${k.id}"]?.size ?: 0}",
-                        onLong = { menu(k.name, "pc_$tab", "hc_$tab", k.id, pins) },
-                        mod = Modifier.fillMaxWidth()) { cat = k; foc = null }
-                }
+            }
+            val f = foc
+            if (f != null && sr == null) {
+                if (f.type == "live" && section == "live") LiveInfo(f)
+                else if (f.type != "live" && (section == "movie" || section == "series" || section == "favs")) Info(f)
             }
         }
-        if ((poster || favs) && sr == null && foc != null && !searching && !guide && !settings) Info(foc)
     }
     dlg?.let { d ->
         // Ignore the select button until the long-press that opened this menu has been released
@@ -478,6 +471,66 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
                 }
             },
             confirmButton = { TextButton(onClick = { dlg = null }) { Text("Cancel") } })
+    }
+}
+
+@Composable fun LiveInfo(i: Item) {
+    val cs = MaterialTheme.colorScheme
+    val n = Repo.nowProg(i)
+    val x = Repo.nextProg(i)
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Text(Repo.label(i), color = cs.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(if (n != null) "Now  ${hm(n.s)}–${hm(n.e)}  ${n.t}" else "No guide data", color = cs.onSurfaceVariant, fontSize = 13.sp, maxLines = 1)
+        if (x != null) Text("Next  ${hm(x.s)}–${hm(x.e)}  ${x.t}", color = cs.onSurfaceVariant, fontSize = 13.sp, maxLines = 1)
+    }
+}
+
+@Composable fun Overview(type: String?, onFocus: (Item) -> Unit, onOpen: (Item, List<Item>) -> Unit, onPlay: (PlayReq) -> Unit, onMenu: (Item) -> Unit, onCwMenu: (CW) -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val t = Repo.tick
+    val cw = Repo.cwList().filter { type == null || it.type == type }
+    val favLive = if (type == null) Repo.favItems("live") else emptyList()
+    val recLive = if (type == null || type == "live") Repo.list("r_live").mapNotNull { Repo.byKey[it] }.take(10) else emptyList()
+    val recPoster = listOf("movie", "series").filter { type == null || it == type }.flatMap { ty -> Repo.list("r_$ty").mapNotNull { Repo.byKey[it] }.take(10) }
+    if (cw.isEmpty() && favLive.isEmpty() && recLive.isEmpty() && recPoster.isEmpty()) {
+        Text("Nothing here yet. Pick a category above, or use the menu on the left. What you watch will show up here.", color = cs.onSurfaceVariant)
+    } else LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (cw.isNotEmpty()) {
+            item { Text("Continue Watching", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(cw) { w ->
+                        Poster(Item(w.url, w.name, "", w.type, w.url, "", w.icon), false, { }, { onCwMenu(w) }, Modifier.width(130.dp), progress = if (w.dur > 0) w.pos.toFloat() / w.dur else 0f) {
+                            onPlay(PlayReq(w.url, emptyList(), 0, w.name, w.icon, w.type))
+                        }
+                    }
+                }
+            }
+        }
+        if (favLive.isNotEmpty()) {
+            item { Text("Favourite channels", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(favLive) { i -> Tile("♥ " + Repo.label(i), Repo.nowProg(i)?.t ?: "", lines = 2, onLong = { onMenu(i) }, mod = Modifier.width(250.dp)) { onOpen(i, favLive) } }
+                }
+            }
+        }
+        if (recLive.isNotEmpty()) {
+            item { Text("Recent channels", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(recLive) { i -> Tile(Repo.label(i), Repo.nowProg(i)?.t ?: "", lines = 2, onLong = { onMenu(i) }, mod = Modifier.width(250.dp)) { onOpen(i, recLive) } }
+                }
+            }
+        }
+        if (recPoster.isNotEmpty()) {
+            item { Text(if (type == null) "Recently watched" else "Recent", color = cs.onSurface, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(recPoster) { i -> Poster(i, false, onFocus, { onMenu(i) }, Modifier.width(130.dp)) { onOpen(i, emptyList()) } }
+                }
+            }
+        }
     }
 }
 
