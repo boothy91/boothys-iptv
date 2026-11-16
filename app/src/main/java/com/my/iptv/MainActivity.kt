@@ -328,7 +328,10 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
     LaunchedEffect(q) {
         if (q.trim().length < 2) res = emptyList()
-        else { delay(250); res = withContext(Dispatchers.Default) { Repo.items.asSequence().filter { it.name.contains(q.trim(), true) && !(Repo.organise && "##" in it.name) }.take(200).toList() } }
+        else { delay(250); res = withContext(Dispatchers.Default) { run {
+            val hid = listOf("live", "movie", "series").associateWith { Repo.hiddenCatIds(it) }
+            Repo.items.asSequence().filter { it.name.contains(q.trim(), true) && !(Repo.organise && "##" in it.name) && it.cat !in (hid[it.type] ?: emptySet()) }
+        }.take(200).toList() } }
     }
     Column(Modifier.fillMaxSize()) {
         OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth().focusRequester(fr), placeholder = { Text("Search live TV, movies & series…") }, singleLine = true, shape = RoundedCornerShape(20.dp))
@@ -418,7 +421,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
                     sr != null -> Episodes(sr) { open(it) }
                     tab == "live" -> {
                         val pc = Repo.list("pc_live"); val hcl = Repo.list("hc_live"); val hil = Repo.list("hi_live"); val pil = Repo.list("pi_live")
-                        val cl = Repo.pinFirst(Repo.prefFirst(Repo.cats.filter { it.type == "live" && it.id !in hcl }), pc) { it.id }
+                        val cl = Repo.pinFirst(Repo.prefFirst(Repo.visibleCats("live")), pc) { it.id }
                         val c = cat ?: cl.firstOrNull()
                         val l = remember(c?.id, Repo.tick, Repo.organise) {
                             if (c == null) emptyList()
@@ -449,7 +452,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
                     }
                     else -> {
                         val pinsC = Repo.list("pc_$tab"); val pinsI = Repo.list("pi_$tab"); val hcm = Repo.list("hc_$tab"); val him = Repo.list("hi_$tab")
-                        val cl = Repo.pinFirst(Repo.prefFirst(Repo.cats.filter { it.type == tab && it.id !in hcm }), pinsC) { it.id }
+                        val cl = Repo.pinFirst(Repo.prefFirst(Repo.visibleCats(tab)), pinsC) { it.id }
                         val allCat = remember(tab) { Cat("__all", "All", tab) }
                         Column(Modifier.fillMaxSize()) {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -465,7 +468,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
                             if (c == null) Overview(tab, { foc = it }, { i, l -> open(i, l) }, onPlay, { favMenu(it) }, { cwMenu(it) })
                             else {
                                 val l = remember(c.id, Repo.tick) {
-                                    Repo.pinFirst((if (c.id == "__all") Repo.items.filter { it.type == tab } else (Repo.byCat["$tab|${c.id}"] ?: emptyList())).filter { it.id !in him }, pinsI) { it.id }
+                                    Repo.pinFirst((if (c.id == "__all") { val hidc = Repo.hiddenCatIds(tab); Repo.items.filter { it.type == tab && it.cat !in hidc } } else (Repo.byCat["$tab|${c.id}"] ?: emptyList())).filter { it.id !in him }, pinsI) { it.id }
                                 }
                                 val lid = remember(c.id) { nav.lastId }
                                 val idx0 = remember(c.id) { l.indexOfFirst { it.id == lid } }
@@ -624,12 +627,39 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     }
 }
 
+@Composable fun HideCats() {
+    val cs = MaterialTheme.colorScheme
+    val t = Repo.tick
+    var type by remember { mutableStateOf("live") }
+    val hp = Repo.hiddenPrefixes(type)
+    val rows = Repo.prefixCounts(type)
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Hide categories", color = cs.onSurface, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            listOf("live" to "Live TV", "movie" to "Movies", "series" to "Series").forEach { (k, l) -> Tile(l, sel = type == k, pill = true) { type = k } }
+        }
+        Text("Tick a prefix to hide every category that starts with it. Untick to show them again.", color = cs.onSurfaceVariant, fontSize = 13.sp)
+        if (rows.isEmpty()) Text("No prefixes found in this playlist.", color = cs.onSurfaceVariant)
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(rows) { (p, n) ->
+                val off = p in hp
+                Tile((if (off) "☑  " else "☐  ") + (if (type == "live") "$p|" else "|$p|"), "$n categor" + (if (n == 1) "y" else "ies") + (if (off) " · hidden" else ""), sel = off, mod = Modifier.fillMaxWidth()) {
+                    Repo.toggleHiddenPrefix(type, p)
+                }
+            }
+        }
+    }
+}
+
 @Composable fun Settings(dark: Boolean, onTheme: () -> Unit, onLogout: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     var confirm by remember { mutableStateOf(false) }
     var aspect by remember { mutableStateOf(Repo.sp.getInt("aspect", 0)) }
     val t = Repo.tick
-    val hidden = listOf("live", "movie", "series").sumOf { Repo.list("hc_$it").size + Repo.list("hi_$it").size }
+    val hidden = listOf("live", "movie", "series").sumOf { Repo.list("hc_$it").size + Repo.list("hi_$it").size + Repo.list("hp_$it").size }
+    var sub by remember { mutableStateOf("") }
+    BackHandler(sub != "") { sub = "" }
+    if (sub == "hide") { HideCats(); return }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Settings", color = cs.onSurface, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Tile("Auto-organise: " + if (Repo.organise) "On" else "Off", "Hides ## placeholders, groups HD/FHD/UHD together, removes UK| / US: prefixes", mod = Modifier.fillMaxWidth()) { Repo.toggleOrganise() }
@@ -643,6 +673,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
         Tile("Stream identity: " + Repo.uas[Repo.uaIdx].second, "Some providers respond faster to certain apps. Try each one", mod = Modifier.fillMaxWidth()) { Repo.cycleUa() }
         Tile("Sleep timer: " + (if (Repo.sleepHours == 0) "Off" else "${Repo.sleepHours}h"), "Stops playback after this long with no remote or touch input, so the screensaver can start", mod = Modifier.fillMaxWidth()) { Repo.cycleSleep() }
         Tile("Check for updates", Repo.updCheck.ifEmpty { "Installed version: ${Repo.ver()}" }, mod = Modifier.fillMaxWidth()) { Repo.checkUpdate(true) }
+        Tile("Hide categories", "Hide whole groups like AU| or FR| in Live TV, Movies and Series", mod = Modifier.fillMaxWidth()) { sub = "hide" }
         Tile("Unhide everything", "$hidden hidden categories / channels", mod = Modifier.fillMaxWidth()) { Repo.clearHidden() }
         Tile("Switch playlist", "Logs out of ${Repo.account?.name ?: ""}", mod = Modifier.fillMaxWidth()) { confirm = true }
     }
@@ -677,7 +708,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     val t = Repo.tick
     val hc = Repo.list("hc_live")
     val hi = Repo.list("hi_live")
-    val cl = Repo.pinFirst(Repo.prefFirst(Repo.cats.filter { it.type == "live" && it.id !in hc }), Repo.list("pc_live")) { it.id }
+    val cl = Repo.pinFirst(Repo.prefFirst(Repo.visibleCats("live")), Repo.list("pc_live")) { it.id }
     val cat = nav.gcat ?: cl.firstOrNull()
     val chans = remember(cat?.id, Repo.tick, Repo.organise) {
         if (cat == null) emptyList() else Repo.organised((Repo.byCat["live|${cat.id}"] ?: emptyList()).filter { it.id !in hi })

@@ -133,6 +133,23 @@ object Repo {
         val (a, b) = l.partition { prefixOf(it.name) == p }
         return a + b
     }
+    // ---------- hide whole groups of categories by prefix (EN|, AU|, |FR| ...) ----------
+    fun hiddenPrefixes(type: String): List<String> = list("hp_$type")
+    fun toggleHiddenPrefix(type: String, p: String) = toggle("hp_$type", p)
+    fun prefixCounts(type: String): List<Pair<String, Int>> =
+        cats.filter { it.type == type }.mapNotNull { prefixOf(it.name) }.groupingBy { it }.eachCount().entries
+            .sortedByDescending { it.value }.map { it.key to it.value }
+
+    fun visibleCats(type: String): List<Cat> {
+        val hc = list("hc_$type").toSet(); val hp = list("hp_$type").toSet()
+        return cats.filter { it.type == type && it.id !in hc && (prefixOf(it.name)?.let { p -> p in hp } != true) }
+    }
+
+    fun hiddenCatIds(type: String): Set<String> {
+        val hc = list("hc_$type").toSet(); val hp = list("hp_$type").toSet()
+        return cats.filter { it.type == type && (it.id in hc || prefixOf(it.name)?.let { p -> p in hp } == true) }.map { it.id }.toSet()
+    }
+
     fun cyclePrefix() {
         val found = cats.mapNotNull { prefixOf(it.name) }.groupingBy { it }.eachCount().filter { it.value >= 2 }
             .entries.sortedByDescending { it.value }.map { it.key }.take(12)
@@ -473,7 +490,7 @@ object Repo {
 
     fun clearHidden() {
         val e = sp.edit()
-        sp.all.keys.filter { it.startsWith("hc_") || it.startsWith("hi_") }.forEach { e.remove(it) }
+        sp.all.keys.filter { it.startsWith("hc_") || it.startsWith("hi_") || it.startsWith("hp_") }.forEach { e.remove(it) }
         e.apply(); tick++
     }
 
