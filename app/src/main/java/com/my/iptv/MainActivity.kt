@@ -302,6 +302,10 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
                         Text(link, color = cs.primary, fontSize = 15.sp)
                     }
                 }
+                Text(
+                    "Chrome showing ERR_TOO_MANY_RETRIES? On your phone go to Settings > Apps > Chrome > Permissions, turn on Nearby devices, then scan the QR code again.",
+                    color = cs.onSurfaceVariant, fontSize = 13.sp
+                )
             }
             OutlinedTextField(n, { n = it }, Modifier.fillMaxWidth(), label = { Text("Playlist Name") }, singleLine = true, keyboardOptions = nx, shape = sh)
             OutlinedTextField(s, { s = it }, Modifier.fillMaxWidth(), label = { Text(if (x) "Server (http://host:port)" else "M3U8 URL") }, singleLine = true, keyboardOptions = nx, shape = sh)
