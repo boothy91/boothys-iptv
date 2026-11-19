@@ -30,7 +30,7 @@ class PairServer(private val onData: (Map<String, String>) -> Unit) {
     }
 
     private fun page(inner: String) =
-        "<!doctype html><meta name=viewport content=\"width=device-width,initial-scale=1\"><body style=\"font-family:sans-serif;background:#0B0F1A;color:#fff;padding:20px;max-width:480px;margin:auto\"><h2>Boothys IPTV Player</h2>$inner"
+        "<!doctype html><meta name=viewport content=\"width=device-width,initial-scale=1\"><body style=\"font-family:sans-serif;background:#0B0F1A;color:#fff;padding:20px;max-width:480px;margin:auto\"><h2>Vexora</h2>$inner"
 
     private val form = page(
         "<style>input:not([type=radio]){display:block;width:100%;box-sizing:border-box;padding:14px;margin:8px 0;border-radius:12px;border:0;font-size:16px}" +

@@ -186,8 +186,8 @@ object Repo {
 
     fun saveCW(url: String, name: String, icon: String, type: String, pos: Long, dur: Long) {
         val rest = cwList().filter { it.url != url }
-        if (pos > dur * 0.95 || pos < 10000) { putCW(rest); sp.edit().remove("pos|$url").apply() }
-        else { putCW((listOf(CW(url, name, icon, type, pos, dur)) + rest).take(20)); sp.edit().putLong("pos|$url", pos).apply() }
+        if (dur > 0 && pos > dur * 0.95) { putCW(rest); sp.edit().remove("pos|$url").apply() }          // finished
+        else if (pos >= 10000) { putCW((listOf(CW(url, name, icon, type, pos, maxOf(dur, 0L))) + rest).take(20)); sp.edit().putLong("pos|$url", pos).apply() }
     }
 
     fun cycleSleep() {

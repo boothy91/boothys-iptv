@@ -172,7 +172,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
                 Text("▶", color = Color.White, fontSize = 40.sp)
             }
             Spacer(Modifier.height(24.dp))
-            Text("Boothys IPTV Player", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+            Text("Vexora", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
             Text("Your entertainment starts here", color = Color(0xFFB8C2DB), fontSize = 16.sp)
             Spacer(Modifier.height(32.dp))
@@ -287,7 +287,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
             Modifier.widthIn(max = 560.dp).verticalScroll(rememberScrollState()).background(cs.surfaceVariant, RoundedCornerShape(28.dp)).padding(28.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("Boothys IPTV Player", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = cs.onSurface)
+            Text("Vexora", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = cs.onSurface)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Tile("Xtream Code", sel = x, pill = true) { x = true }
                 Tile("M3U8", sel = !x, pill = true) { x = false }
@@ -395,7 +395,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
             Modifier.width(190.dp).fillMaxHeight().background(cs.surfaceVariant.copy(alpha = 0.45f)).verticalScroll(rememberScrollState()).padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text("Boothys IPTV", color = cs.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 10.dp))
+            Text("Vexora", color = cs.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 10.dp))
             listOf("home" to "Home", "live" to "Live TV", "movie" to "Movies", "series" to "Series", "guide" to "TV Guide", "favs" to "Favourites", "search" to "Search")
                 .forEach { (k, l) -> Tile(l, sel = section == k, mod = Modifier.fillMaxWidth()) { go(k) } }
             Spacer(Modifier.height(10.dp))
@@ -846,10 +846,7 @@ fun focusPlay(p: PlayerView) {
             }
         }
         onDispose {
-            runCatching {
-                val d = ex.duration
-                if (req.list.isEmpty() && !ex.isCurrentMediaItemLive && d > 0) Repo.saveCW(cur, req.name, req.icon, req.type, ex.currentPosition, d)
-            }
+            runCatching { if (req.type != "live" && req.list.isEmpty()) Repo.saveCW(cur, req.name, req.icon, req.type, ex.currentPosition, ex.duration.coerceAtLeast(0L)) }
             w?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             Repo.onMenu = null; Repo.onZap = null; Repo.onMedia = null; ex.release(); c?.show(WindowInsetsCompat.Type.systemBars())
         }
@@ -863,6 +860,13 @@ fun focusPlay(p: PlayerView) {
         }
     }
     LaunchedEffect(startMs) { if (startMs >= 0 && Repo.showTiming) banner = "t$startMs" }
+    // save progress while watching, so Continue Watching works even if the app is closed or the Firestick sleeps
+    LaunchedEffect(Unit) {
+        while (req.type != "live" && req.list.isEmpty()) {
+            delay(5000)
+            if (ex.playbackState == Player.STATE_READY) Repo.saveCW(cur, req.name, req.icon, req.type, ex.currentPosition, ex.duration.coerceAtLeast(0L))
+        }
+    }
     LaunchedEffect(banner) { if (banner.isNotEmpty()) { delay(2500); banner = "" } }
     BackHandler { if (menu) menu = false else if (ctrl) pv?.hideController() else onBack() }
     val rm = when (mode) {
