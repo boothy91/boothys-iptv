@@ -421,7 +421,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
                         Text("Loading your playlist…", color = cs.onSurfaceVariant)
                     }
                     home -> Overview(null, { }, { i, l -> open(i, l) }, onPlay, { favMenu(it) }, { cwMenu(it) })
-                    sr != null -> Episodes(sr) { open(it) }
+                    sr != null -> Episodes(sr, nav.lastId) { open(it) }
                     tab == "live" -> {
                         val pc = Repo.list("pc_live"); val hcl = Repo.list("hc_live"); val hil = Repo.list("hi_live"); val pil = Repo.list("pi_live")
                         val cl = Repo.pinFirst(Repo.prefFirst(Repo.visibleCats("live")), pc) { it.id }
@@ -578,14 +578,39 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     }
 }
 
-@Composable fun Episodes(s: Item, onOpen: (Item) -> Unit) {
+@Composable fun Episodes(s: Item, lastId: String?, onOpen: (Item) -> Unit) {
+    val cs = MaterialTheme.colorScheme
     var eps by remember { mutableStateOf<List<Item>?>(null) }
+    var season by remember { mutableStateOf<String?>(null) }
+    val ls = rememberLazyListState()
+    val fr = remember { FocusRequester() }
     LaunchedEffect(s) { eps = withContext(Dispatchers.IO) { runCatching { Repo.episodes(s) }.getOrDefault(emptyList()) } }
+    LaunchedEffect(season) { ls.scrollToItem(0) }
+    LaunchedEffect(eps) {
+        val l = eps ?: return@LaunchedEffect
+        val hit = l.find { it.id == lastId }
+        season = hit?.cat ?: l.firstOrNull()?.cat
+        if (hit != null) {
+            val idx = l.filter { it.cat == hit.cat }.indexOfFirst { it.id == hit.id }
+            delay(200); ls.scrollToItem(maxOf(idx, 0)); delay(100); runCatching { fr.requestFocus() }
+        }
+    }
     val l = eps
-    val g = MaterialTheme.colorScheme.onSurfaceVariant
-    if (l == null) Text("Loading…", color = g)
-    else if (l.isEmpty()) Text("No episodes found", color = g)
-    else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(l) { e -> Tile(e.name, mod = Modifier.fillMaxWidth()) { onOpen(e) } } }
+    if (l == null) { Text("Loading…", color = cs.onSurfaceVariant); return }
+    if (l.isEmpty()) { Text("No episodes found", color = cs.onSurfaceVariant); return }
+    val seasons = l.map { it.cat }.distinct()
+    val cur = season ?: seasons.first()
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(s.name, color = cs.onSurface, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(seasons) { sn -> Tile(if (sn == "0") "Specials" else "Season $sn", sel = sn == cur, pill = true) { season = sn } }
+        }
+        LazyColumn(Modifier.weight(1f), state = ls, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(l.filter { it.cat == cur }) { e ->
+                Tile("Episode ${e.epgId}", e.name.substringAfter("  ", ""), mod = Modifier.fillMaxWidth(), fr = if (e.id == lastId) fr else null) { onOpen(e) }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

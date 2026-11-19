@@ -381,17 +381,20 @@ object Repo {
 
     fun episodes(s: Item): List<Item> {
         val a = account!!
-        val o = JSONObject(open("${api(a)}&action=get_series_info&series_id=${s.id}").bufferedReader().use { it.readText() }).getJSONObject("episodes")
-        val r = ArrayList<Item>()
-        for (sn in o.keys().asSequence().sortedBy { it.toIntOrNull() ?: 0 }) {
-            val ar = o.getJSONArray(sn)
-            for (k in 0 until ar.length()) {
-                val e = ar.getJSONObject(k); val id = e.optString("id")
-                r.add(Item(id, "S$sn E${e.optString("episode_num")}  ${e.optString("title")}", s.cat, "episode",
-                    "${base(a)}/series/${a.user}/${a.pass}/$id.${e.s("container_extension").ifBlank { "mp4" }}"))
-            }
+        val root = JSONObject(open("${api(a)}&action=get_series_info&series_id=${s.id}").bufferedReader().use { it.readText() })
+        val epo = root.opt("episodes")
+        val seasons: List<Pair<String, JSONArray>> = when (epo) {
+            is JSONObject -> epo.keys().asSequence().map { it to epo.getJSONArray(it) }.toList()
+            is JSONArray -> (0 until epo.length()).map { (it + 1).toString() to epo.getJSONArray(it) }
+            else -> emptyList()
         }
-        return r
+        val r = ArrayList<Item>()
+        for ((sn, ar) in seasons) for (k in 0 until ar.length()) {
+            val e = ar.getJSONObject(k); val id = e.optString("id")
+            r.add(Item(id, "S$sn E${e.optString("episode_num")}  ${e.optString("title")}", sn, "episode",
+                "${base(a)}/series/${a.user}/${a.pass}/$id.${e.s("container_extension").ifBlank { "mp4" }}", e.optString("episode_num")))
+        }
+        return r.sortedWith(compareBy({ it.cat.toIntOrNull() ?: 0 }, { it.epgId.toIntOrNull() ?: 0 }))
     }
 
     // ---------- EPG (streamed to disk, cached 12h) ----------
