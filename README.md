@@ -10,12 +10,15 @@ A fast, modern IPTV player for **Amazon Fire TV / Android TV**, built for the re
 
 **[⬇ Download the latest Vexora APK](https://github.com/boothy91/boothys-iptv/releases/latest/download/BoothysIPTV.apk)**
 
+**Downloader code: `1351760`**
+
 All versions and release notes: [Releases](https://github.com/boothy91/boothys-iptv/releases)
 
 ### Install on a Firestick
 1. Install the **Downloader** app from the Amazon App Store.
 2. On the Firestick go to **Settings > My Fire TV > Developer options** and allow **Install unknown apps** for Downloader.
-3. Open Downloader and enter this address:
+3. Open Downloader and enter the code **1351760**.
+   Or type this address instead:
    `https://github.com/boothy91/boothys-iptv/releases/latest/download/BoothysIPTV.apk`
 4. Choose **Install**. Vexora then appears in your apps.
 
