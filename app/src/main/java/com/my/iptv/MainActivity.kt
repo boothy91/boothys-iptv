@@ -16,6 +16,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -120,15 +121,21 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// Vexora brand colours (sampled from the logo)
+val VPurple = Color(0xFF8512FB)
+val VBlue = Color(0xFF3823F8)
+val VCyan = Color(0xFF00C8FD)
+val VBrush = Brush.horizontalGradient(listOf(VPurple, VBlue))
+
 val DarkC = darkColorScheme(
-    primary = Color(0xFF4C8DFF), onPrimary = Color.White, background = Color(0xFF0B0F1A), surface = Color(0xFF0B0F1A),
-    onSurface = Color(0xFFF1F5F9), surfaceVariant = Color(0xFF182033), onSurfaceVariant = Color(0xFF9AA7BD),
-    secondaryContainer = Color(0xFF26385C), onSecondaryContainer = Color.White
+    primary = Color(0xFF5B4BFF), onPrimary = Color.White, background = Color(0xFF07041A), surface = Color(0xFF07041A),
+    onSurface = Color(0xFFF3F1FF), surfaceVariant = Color(0xFF151235), onSurfaceVariant = Color(0xFFA9A3D6),
+    secondaryContainer = Color(0xFF2A1F66), onSecondaryContainer = Color.White
 )
 val LightC = lightColorScheme(
-    primary = Color(0xFF2F6BFF), onPrimary = Color.White, background = Color(0xFFF2F4F9), surface = Color(0xFFF2F4F9),
-    onSurface = Color(0xFF111827), surfaceVariant = Color(0xFFE3E8F2), onSurfaceVariant = Color(0xFF5B6678),
-    secondaryContainer = Color(0xFFC9D9FF), onSecondaryContainer = Color(0xFF0B2A6B)
+    primary = Color(0xFF3823F8), onPrimary = Color.White, background = Color(0xFFF4F2FF), surface = Color(0xFFF4F2FF),
+    onSurface = Color(0xFF150F33), surfaceVariant = Color(0xFFE6E1FA), onSurfaceVariant = Color(0xFF5B5680),
+    secondaryContainer = Color(0xFFD8CFFF), onSecondaryContainer = Color(0xFF1B0F66)
 )
 
 class Nav {
@@ -202,7 +209,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
             .then(if (fr != null) Modifier.focusRequester(fr) else Modifier)
             .onFocusChanged { f = it.hasFocus; if (it.hasFocus) onFocus?.invoke() }
             .longKeys(onLong)
-            .background(if (f) cs.primary else if (sel) cs.secondaryContainer else cs.surfaceVariant, shape)
+            .then(if (f) Modifier.background(VBrush, shape).border(2.dp, VCyan, shape) else Modifier.background(if (sel) cs.secondaryContainer else cs.surfaceVariant, shape))
             .clip(shape)
             .combinedClickable(onLongClick = onLong, onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 12.dp)
@@ -223,7 +230,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
             .then(if (fr != null) Modifier.focusRequester(fr) else Modifier)
             .onFocusChanged { f = it.hasFocus; if (it.hasFocus) onFocus(i) }
             .longKeys(onLong)
-            .background(if (f) cs.primary else cs.surfaceVariant, shape)
+            .then(if (f) Modifier.background(VBrush, shape).border(2.dp, VCyan, shape) else Modifier.background(cs.surfaceVariant, shape))
             .clip(shape)
             .combinedClickable(onLongClick = onLong, onClick = onClick)
             .padding(6.dp)
@@ -233,7 +240,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
             modifier = Modifier.fillMaxWidth().aspectRatio(0.75f).clip(RoundedCornerShape(13.dp)).background(cs.background)
         )
         if (progress > 0f) Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(cs.background)) {
-            Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(if (f) cs.onPrimary else cs.primary))
+            Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(if (f) Color.White else VCyan))
         }
         Text((if (Repo.isFav(i)) "♥ " else "") + (if (pinned) "★ " else "") + i.name, maxLines = 1, color = if (f) cs.onPrimary else cs.onSurface, fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 2.dp))
     }
@@ -391,7 +398,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
             Modifier.width(190.dp).fillMaxHeight().background(cs.surfaceVariant.copy(alpha = 0.45f)).verticalScroll(rememberScrollState()).padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text("Vexora", color = cs.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 10.dp))
+            Text("Vexora", color = VCyan, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, bottom = 10.dp))
             listOf("home" to "Home", "live" to "Live TV", "movie" to "Movies", "series" to "Series", "guide" to "TV Guide", "favs" to "Favourites", "search" to "Search")
                 .forEach { (k, l) -> Tile(l, sel = section == k, mod = Modifier.fillMaxWidth()) { go(k) } }
             Spacer(Modifier.height(10.dp))
@@ -588,7 +595,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     val shape = RoundedCornerShape(18.dp)
     Column(
         Modifier.fillMaxWidth().padding(bottom = 12.dp).onFocusChanged { f = it.hasFocus }
-            .background(if (f) cs.primary else Color(0xFF1B8A5A), shape).clip(shape)
+            .then(if (f) Modifier.background(VBrush, shape).border(2.dp, VCyan, shape) else Modifier.background(Brush.horizontalGradient(listOf(Color(0xFF0E7A8C), VBlue)), shape)).clip(shape)
             .combinedClickable(onClick = { Repo.downloadUpdate() }).padding(horizontal = 20.dp, vertical = 12.dp)
     ) {
         Text("⬆  Update available — ${u.tag}", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
@@ -689,7 +696,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     Box(mod.padding(end = 3.dp)) {
         Column(
             Modifier.fillMaxSize().onFocusChanged { f = it.hasFocus }
-                .background(if (f) cs.primary else if (airing) cs.secondaryContainer else cs.surfaceVariant, shape)
+                .then(if (f) Modifier.background(VBrush, shape).border(2.dp, VCyan, shape) else Modifier.background(if (airing) cs.secondaryContainer else cs.surfaceVariant, shape))
                 .clip(shape).combinedClickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
             val c = if (f) cs.onPrimary else if (airing) cs.onSecondaryContainer else cs.onSurface
