@@ -13,6 +13,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -46,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -154,7 +156,7 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
     var play by remember { mutableStateOf<PlayReq?>(null) }
     var splash by remember { mutableStateOf(true) }
     val nav = remember { Nav() }
-    LaunchedEffect(Unit) { delay(1800); splash = false }
+    LaunchedEffect(Unit) { delay(2500); splash = false }
     MaterialTheme(colorScheme = if (dark) DarkC else LightC) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             if (splash) Splash()
@@ -166,18 +168,12 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
 }
 
 @Composable fun Splash() {
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF0B1226), Color(0xFF2B1B5E)))), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(88.dp).background(Brush.linearGradient(listOf(Color(0xFF4C8DFF), Color(0xFF9B5CFF))), RoundedCornerShape(26.dp)), contentAlignment = Alignment.Center) {
-                Text("▶", color = Color.White, fontSize = 40.sp)
-            }
-            Spacer(Modifier.height(24.dp))
-            Text("Vexora", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            Text("Your entertainment starts here", color = Color(0xFFB8C2DB), fontSize = 16.sp)
-            Spacer(Modifier.height(32.dp))
-            CircularProgressIndicator(color = Color(0xFF4C8DFF), strokeWidth = 3.dp, modifier = Modifier.size(28.dp))
-        }
+    Box(Modifier.fillMaxSize().background(Color(0xFF050814))) {
+        Image(painterResource(R.drawable.vexora_splash), contentDescription = "Vexora", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        CircularProgressIndicator(
+            color = Color.White.copy(alpha = 0.8f), strokeWidth = 3.dp,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp).size(26.dp)
+        )
     }
 }
 
