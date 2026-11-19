@@ -679,6 +679,17 @@ fun hm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(
         Tile("Hide categories", "Hide whole groups like AU| or FR| in Live TV, Movies and Series", mod = Modifier.fillMaxWidth()) { sub = "hide" }
         Tile("Unhide everything", "$hidden hidden categories / channels", mod = Modifier.fillMaxWidth()) { Repo.clearHidden() }
         Tile("Switch playlist", "Logs out of ${Repo.account?.name ?: ""}", mod = Modifier.fillMaxWidth()) { confirm = true }
+        Row(
+            Modifier.fillMaxWidth().background(cs.surfaceVariant, RoundedCornerShape(16.dp)).padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically
+        ) {
+            Qr("https://refer-nordvpn.com/BoZjAlNeKcb", 120.dp)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Need a VPN?", color = cs.onSurface, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text("Scan here with your phone", color = cs.onSurfaceVariant, fontSize = 14.sp)
+                Text("refer-nordvpn.com/BoZjAlNeKcb", color = VCyan, fontSize = 12.sp)
+            }
+        }
     }
     if (confirm) AlertDialog(
         onDismissRequest = { confirm = false }, shape = RoundedCornerShape(24.dp),
